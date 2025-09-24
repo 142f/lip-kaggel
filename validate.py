@@ -35,13 +35,13 @@ def validate(model, loader, gpu_id):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument("--real_list_path", type=str, default=r"E:\val\0_real")
-    parser.add_argument("--fake_list_path", type=str, default=r"E:\val\1_fake")
+    parser.add_argument("--real_list_path", type=str, default=r"E:\data\val2\0_real")
+    parser.add_argument("--fake_list_path", type=str, default=r"E:\data\val2\1_fake")
     parser.add_argument("--max_sample", type=int, default=1000, help="max number of validate samples")
     parser.add_argument("--batch_size", type=int, default=10)
     parser.add_argument("--data_label", type=str, default="val")
     parser.add_argument("--arch", type=str, default="CLIP:ViT-L/14")
-    parser.add_argument("--ckpt", type=str, default=r"E:\ckpt.pth")
+    parser.add_argument("--ckpt", type=str, default=r"E:\data\ckpt.pth")
     parser.add_argument("--gpu", type=int, default=0)
 
     opt = parser.parse_args()

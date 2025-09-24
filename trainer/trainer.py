@@ -6,6 +6,7 @@ from models import build_model, get_loss
 
 class Trainer(nn.Module):
     def __init__(self, opt):
+        super().__init__()
         self.opt = opt
         self.total_steps = 0
         self.save_dir = os.path.join(opt.checkpoints_dir, opt.name)
@@ -28,14 +29,20 @@ class Trainer(nn.Module):
             self.total_steps = state_dict["total_steps"]
             print(f"Model loaded @ {opt.pretrained_model.split('/')[-1]}")
 
+
         if opt.fix_encoder:
-            params = []
+            # `params` 变量在这里实际上没有被使用，可以简化
             for name, p in self.model.named_parameters():
                 if name.split(".")[0] in ["encoder"]:
                     p.requires_grad = False
                 else:
-                    p.requires_grad = False
+                    p.requires_grad = True # 正确
+            # 只将需要训练的参数传递给优化器
+            params = filter(lambda p: p.requires_grad, self.model.parameters())
+        else:
+            # 如果不固定任何部分，所有参数都应该可训练
             params = self.model.parameters()
+
 
         if opt.optim == "adam":
             self.optimizer = torch.optim.AdamW(

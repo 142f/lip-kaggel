@@ -12,16 +12,24 @@ class BaseOptions:
         parser.add_argument("--fix_backbone", default=False)
         parser.add_argument("--fix_encoder", default=True)
 
-        parser.add_argument("--real_list_path", default="./datasets/val/0_real")
-        parser.add_argument("--fake_list_path", default="./datasets/val/1_fake")
+        parser.add_argument("--real_list_path", default=r"E:\data\0_real")
+        parser.add_argument("--fake_list_path", default=r"E:\data\1_fake")
         parser.add_argument("--data_label", default="train", help="label to decide whether train or validation dataset",)
 
         parser.add_argument( "--batch_size", type=int, default=10, help="input batch size")
-        parser.add_argument("--gpu_ids", type=str, default="1", help="gpu ids: e.g. 0  0,1,2, 0,2. use -1 for CPU",)
+        parser.add_argument("--gpu_ids", type=str, default="0", help="gpu ids: e.g. 0  0,1,2, 0,2. use -1 for CPU",)
         parser.add_argument("--name", type=str, default="experiment_name", help="name of the experiment. It decides where to store samples and models",)
         parser.add_argument("--num_threads", default=0, type=int, help="# threads for loading data")
         parser.add_argument("--checkpoints_dir", type=str, default="./checkpoints", help="models are saved here",)
         parser.add_argument("--serial_batches",action="store_true",help="if true, takes images in order to make batches, otherwise takes them randomly",)
+        # 新增参数 --错误点
+        parser.add_argument("--suffix", type=str, default="", help="customized suffix: opt.name = opt.name + suffix: e.g., {model}_{netG}_size{load_size}")
+        parser.add_argument('--rz_interp', type=str, default='bilinear', help='interpolation method for resizing')
+        parser.add_argument('--blur_sig', type=str, default='0.0,3.0', help='sigma for Gaussian blur, comma-separated')
+        parser.add_argument('--jpg_method', type=str, default='cv2', help='jpeg compression method, e.g., cv2 or pil')
+        parser.add_argument('--jpg_qual', type=str, default='75,100', help='jpeg quality range, comma-separated')
+        parser.add_argument('--weight_decay', type=float, default=0.01, help='weight decay for optimizers')
+        parser.add_argument('--class_bal', action='store_true', help='if specified, use class balancing for the dataset loader')
         self.initialized = True
         return parser
 
@@ -33,7 +41,9 @@ class BaseOptions:
             )
             parser = self.initialize(parser)
 
-        # get the basic options
+        # get the basic options 重大问题
+    #     parser.parse_args(): 会处理所有已知的参数。对于那些在命令行中未提供的参数，它会使用default值来创建对应的属性。所以，即使你不提供 --suffix，opt.suffix 也会存在（值为它的默认值，比如 ''）。
+    # parser.parse_known_args(): 只会为那些在命令行中实际出现的参数创建属性。如果命令行中没有任何参数，它会返回一个几乎为空的Namespace对象，上面没有任何你自定义的属性。
         opt, _ = parser.parse_known_args()
         self.parser = parser
 

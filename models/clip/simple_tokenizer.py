@@ -9,6 +9,7 @@ import regex as re
 
 @lru_cache()
 def default_bpe():
+    # 虽然我们不再直接使用这个函数的返回值，但保留它以避免其他地方可能出现的引用错误
     return os.path.join(os.path.dirname(os.path.abspath(__file__)), "bpe_simple_vocab_16e6.txt.gz")
 
 
@@ -63,7 +64,19 @@ class SimpleTokenizer(object):
     def __init__(self, bpe_path: str = default_bpe()):
         self.byte_encoder = bytes_to_unicode()
         self.byte_decoder = {v: k for k, v in self.byte_encoder.items()}
-        merges = gzip.open(bpe_path).read().decode("utf-8").split('\n')
+
+        # --- 代码修改开始 ---
+        # 1. 定义正确的、非压缩文件的路径
+        correct_bpe_path = '/kaggle/input/lips-data2000/bpe_simple_vocab_16e6.txt'
+
+        # 2. 使用标准的 open() 函数读取普通文本文件
+        try:
+            with open(correct_bpe_path, "r", encoding="utf-8") as f:
+                merges = f.read().split('\n')
+        except FileNotFoundError:
+            raise FileNotFoundError(f"BPE vocab file not found at the specified path: {correct_bpe_path}")
+        # --- 代码修改结束 ---
+
         merges = merges[1:49152-256-2+1]
         merges = [tuple(merge.split()) for merge in merges]
         vocab = list(bytes_to_unicode().values())

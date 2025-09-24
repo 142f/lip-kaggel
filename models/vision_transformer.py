@@ -405,6 +405,8 @@ def vit_l_32(pretrained: bool = False, progress: bool = True, **kwargs: Any) -> 
         **kwargs,
     )
 
+##适配不同图像尺寸的核心工具，解决了预训练模型的 “位置嵌入” 与新图像尺寸不匹配的问题。
+##确保模型在处理这些尺寸时仍能正确编码唇部区域的空间位置关系（如嘴角与唇峰的相对位置）
 
 def interpolate_embeddings(
     image_size: int,

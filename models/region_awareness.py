@@ -176,6 +176,7 @@ class ResNet(nn.Module):
         self.layer4 = self._make_layer(block, 512, layers[3], stride=2,
                                        dilate=replace_stride_with_dilation[2])
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+        ## 融合了局部细节特征与全局语义特征
         self.get_weight = nn.Sequential(
             nn.Linear(512 * block.expansion + 768, 1),  # TODO: 768 is the length of global feature
             nn.Sigmoid()

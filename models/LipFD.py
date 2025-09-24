@@ -34,7 +34,7 @@ class RALoss(nn.Module):
         for i in range(len(alphas_org)):
             loss_wt = 0.0
             for j in range(batch_size):
-                loss_wt += torch.Tensor([10]).to(alphas_max[i][j].device) / np.exp(
+                loss_wt += torch.Tensor([10]).to(alphas_max[i][j].device) / torch.exp(
                     alphas_max[i][j] - alphas_org[i][j]
                 )
             loss += loss_wt / batch_size
