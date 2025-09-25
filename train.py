@@ -8,6 +8,11 @@ from models import build_model
 from trainer.trainer import Trainer
 from options.train_options import TrainOptions
 
+import cv2
+
+# --- 关键修复：禁用 OpenCV 的多线程，防止与 DataParallel 冲突 ---
+cv2.setNumThreads(0)
+cv2.ocl.setUseOpenCL(False)
 
 def get_val_opt(main_opt): # 让 val_opt 继承主 opt 的一些设置
     val_opt = TrainOptions().parse(print_options=False)
