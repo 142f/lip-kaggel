@@ -1,7 +1,10 @@
 import torch
+# --- 1. 导入 tqdm 的 Notebook 专用版本 ---
+from tqdm.notebook import tqdm
+# -----------------------------------------
 from validate import validate
 from data import create_dataloader
-from models import build_model # 在这里导入 build_model
+from models import build_model
 from trainer.trainer import Trainer
 from options.train_options import TrainOptions
 
@@ -65,18 +68,23 @@ if __name__ == "__main__":
         trainer.train()
         print("epoch: ", epoch)
 
-        for i, (img, crops, label) in enumerate(data_loader):
+        # --- 2. 使用 tqdm 包装 data_loader 来创建训练进度条 ---
+        progress_bar = tqdm(data_loader, desc=f"Epoch {epoch} Training", leave=True)
+
+        # 遍历包装后的 progress_bar
+        for i, (img, crops, label) in enumerate(progress_bar):
             trainer.total_steps += 1
             trainer.set_input((img, crops, label))
             trainer.forward()
             trainer.optimize_parameters()
 
-            if trainer.total_steps % opt.loss_freq == 0:
-                print(
-                    "Train loss: {:.4f}\tstep: {}".format(
-                        trainer.get_loss(), trainer.total_steps
-                    )
-                )
+            # --- 3. 在进度条上实时更新损失，而不是打印 ---
+            # 每 10 步更新一次，感觉更实时
+            if trainer.total_steps % 10 == 0:
+                current_loss = trainer.get_loss()
+                # set_postfix 会在进度条右侧显示这些信息
+                progress_bar.set_postfix(loss=f"{current_loss:.4f}", step=trainer.total_steps)
+        # --- 进度条修改结束 ---
 
         if epoch % opt.save_epoch_freq == 0:
             print("saving the model at the end of epoch %d" % epoch)
