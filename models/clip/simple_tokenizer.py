@@ -6,11 +6,21 @@ from functools import lru_cache
 import ftfy
 import regex as re
 
+# Kaggle 环境下的 BPE 词汇表文件路径
+KAGGLE_BPE_PATH = "/kaggle/input/lips-data2000/bpe_simple_vocab_16e6.txt"
 
 @lru_cache()
 def default_bpe():
-    # 虽然我们不再直接使用这个函数的返回值，但保留它以避免其他地方可能出现的引用错误
-    return os.path.join(os.path.dirname(os.path.abspath(__file__)), "bpe_simple_vocab_16e6.txt.gz")
+    # --- 修改点 1: 修改默认路径 ---
+    # 检查是否在 Kaggle 环境中，如果是，则返回新的路径
+    # 否则，保留原始的相对路径逻辑，以保证本地也能运行
+    if os.path.exists(KAGGLE_BPE_PATH):
+        return KAGGLE_BPE_PATH
+
+    # 原始代码，用于本地调试或其他环境
+    # 注意：原始代码依赖 .gz 文件，你需要确保本地有这个压缩文件
+    original_gz_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bpe_simple_vocab_16e6.txt.gz")
+    return original_gz_path
 
 
 @lru_cache()
@@ -65,20 +75,20 @@ class SimpleTokenizer(object):
         self.byte_encoder = bytes_to_unicode()
         self.byte_decoder = {v: k for k, v in self.byte_encoder.items()}
 
-        # --- 代码修改开始 ---
-        # 1. 定义正确的、非压缩文件的路径
-        correct_bpe_path = '/kaggle/input/lips-data2000/bpe_simple_vocab_16e6.txt'
-
-        # 2. 使用标准的 open() 函数读取普通文本文件
-        try:
-            with open(correct_bpe_path, "r", encoding="utf-8") as f:
+        # --- 修改点 2: 修改文件读取逻辑 ---
+        # 检查文件路径是否以 .gz 结尾
+        if bpe_path.endswith(".gz"):
+            # 如果是压缩文件，使用 gzip 打开
+            with gzip.open(bpe_path) as f:
+                merges = f.read().decode("utf-8").split('\n')
+        else:
+            # 如果是普通文本文件，直接用 open 打开
+            with open(bpe_path, "r", encoding="utf-8") as f:
                 merges = f.read().split('\n')
-        except FileNotFoundError:
-            raise FileNotFoundError(f"BPE vocab file not found at the specified path: {correct_bpe_path}")
-        # --- 代码修改结束 ---
 
+        # --- 后续代码保持不变 ---
         merges = merges[1:49152-256-2+1]
-        merges = [tuple(merge.split()) for merge in merges]
+        merges = [tuple(merge.split()) for merge in merges if merge] # 增加一个判断，避免空行导致错误
         vocab = list(bytes_to_unicode().values())
         vocab = vocab + [v+'</w>' for v in vocab]
         for merge in merges:
