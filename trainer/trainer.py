@@ -105,7 +105,7 @@ class Trainer(nn.Module):
 
     def get_features(self):
         # self.model.get_features 会被 DataParallel 代理到原始模型上
-        self.features = self.model.get_features(self.input)
+        self.features = self.model.module.get_features(self.input)
         # 注意：这里的 .to(self.device) 可能多余，因为 get_features 的输出应该已经在 GPU 上
         # 但保留它也不会出错
 
