@@ -8,8 +8,8 @@ def get_val_opt():
     val_opt = TrainOptions().parse(print_options=False)
     val_opt.isTrain = False
     val_opt.data_label = "val"
-    val_opt.real_list_path = r"E:\data\val\0_real"
-    val_opt.fake_list_path = r"E:\data\val\1_fake"
+    val_opt.real_list_path = r"/kaggle/input/lips-data2000/val/val/0_real"
+    val_opt.fake_list_path = r"/kaggle/input/lips-data2000/val/val/1_fake"
     return val_opt
 
 
