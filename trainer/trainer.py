@@ -100,6 +100,17 @@ class Trainer(nn.Module):
         self.crops = [[t.to(self.device) for t in sublist] for sublist in input[1]]
         self.label = input[2].to(self.device).float()
 
+    def forward(self):
+        self.get_features()
+        self.output, self.weights_max, self.weights_org = self.model.forward(
+            self.crops, self.features
+        )
+        self.output = self.output.view(-1)
+        # 分别保存两个损失值
+        self.loss_ral = self.criterion(self.weights_max, self.weights_org)
+        self.loss_ce = self.criterion1(self.output, self.label)
+        self.loss = self.loss_ral + self.loss_ce
+
     def get_loss(self):
         loss = self.loss.data.tolist()
         return loss[0] if isinstance(loss, type(list())) else loss
