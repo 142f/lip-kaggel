@@ -1,6 +1,7 @@
 import os
 import torch
 import torch.nn as nn
+import math
 from models import build_model, get_loss
 
 
@@ -44,8 +45,15 @@ class Trainer(nn.Module):
             params = self.model.parameters()
 
 
-        if opt.optim == "adam":
+        if opt.optim == "adamw":
             self.optimizer = torch.optim.AdamW(
+                params,
+                lr=opt.lr,
+                betas=(opt.beta1, 0.999),
+                weight_decay=opt.weight_decay,
+            )
+        elif opt.optim == "adam":
+            self.optimizer = torch.optim.Adam(
                 params,
                 lr=opt.lr,
                 betas=(opt.beta1, 0.999),
@@ -53,10 +61,10 @@ class Trainer(nn.Module):
             )
         elif opt.optim == "sgd":
             self.optimizer = torch.optim.SGD(
-                params, lr=opt.lr, momentum=0.0, weight_decay=opt.weight_decay
+                params, lr=opt.lr, momentum=0.9, weight_decay=opt.weight_decay
             )
         else:
-            raise ValueError("optim should be [adam, sgd]")
+            raise ValueError("optim should be [sgd, adam, adamw]")
 
         self.criterion = get_loss().to(self.device)
         self.criterion1 = nn.CrossEntropyLoss()
@@ -70,24 +78,39 @@ class Trainer(nn.Module):
             param_group["lr"] /= 10.0
         return True
 
+    def cosine_annealing_lr(self, epoch, total_epochs, min_lr=1e-10):
+        """
+        简单的余弦退火学习率调度
+        lr = min_lr + 0.5 * (initial_lr - min_lr) * (1 + cos(π * epoch / total_epochs))
+        """
+        if not hasattr(self, 'initial_lr'):
+            self.initial_lr = self.optimizer.param_groups[0]['lr']
+
+        # 余弦退火公式
+        lr = min_lr + 0.5 * (self.initial_lr - min_lr) * (1 + math.cos(math.pi * epoch / total_epochs))
+
+        # 更新所有参数组的学习率
+        for param_group in self.optimizer.param_groups:
+            param_group['lr'] = lr
+
+        return lr
+
     def set_input(self, input):
         self.input = input[0].to(self.device)
         self.crops = [[t.to(self.device) for t in sublist] for sublist in input[1]]
         self.label = input[2].to(self.device).float()
 
-    def forward(self):
-        self.get_features()
-        self.output, self.weights_max, self.weights_org = self.model.forward(
-            self.crops, self.features
-        )
-        self.output = self.output.view(-1)
-        self.loss = self.criterion(
-            self.weights_max, self.weights_org
-        ) + self.criterion1(self.output, self.label)
-
     def get_loss(self):
         loss = self.loss.data.tolist()
         return loss[0] if isinstance(loss, type(list())) else loss
+
+    # 添加获取单独损失值的方法
+    def get_individual_losses(self):
+        loss_ral = self.loss_ral.data.tolist()
+        loss_ral = loss_ral[0] if isinstance(loss_ral, type(list())) else loss_ral
+        loss_ce = self.loss_ce.data.tolist()
+        loss_ce = loss_ce[0] if isinstance(loss_ce, type(list())) else loss_ce
+        return loss_ral, loss_ce
 
     def optimize_parameters(self):
         self.optimizer.zero_grad()
