@@ -11,6 +11,7 @@ class Trainer(nn.Module):
         self.opt = opt
         self.total_steps = 0
         self.save_dir = os.path.join(opt.checkpoints_dir, opt.name)
+        os.makedirs(self.save_dir, exist_ok=True)  # 确保保存目录存在
         self.device = (
             torch.device("cuda:{}".format(opt.gpu_ids[0]))
             if opt.gpu_ids
@@ -142,6 +143,7 @@ class Trainer(nn.Module):
 
     def save_networks(self, save_filename):
         save_path = os.path.join(self.save_dir, save_filename)
+        os.makedirs(self.save_dir, exist_ok=True)  # 确保保存目录存在
 
         # serialize model and optimizer to dict
         state_dict = {
