@@ -130,6 +130,15 @@ def main(rank, world_size, opt):
             print(format_options(opt, train_options.parser))
             print("\n", flush=True)
 
+            # 打印模型参数量
+            # 创建临时模型实例用于计算参数量
+            temp_model = TrainerDDP(opt, rank)
+            total_params = sum(p.numel() for p in temp_model.model.parameters())
+            trainable_params = sum(p.numel() for p in temp_model.model.parameters() if p.requires_grad)
+            print(f"模型总参数量: {total_params:,}")
+            print(f"可训练参数量: {trainable_params:,}")
+            print("\n")
+
         # 创建训练和验证 dataloader
         train_loader = create_dataloader(opt, distributed=True)
         val_opt = get_val_opt(opt)
@@ -149,6 +158,7 @@ def main(rank, world_size, opt):
 
         best_acc = 0.0
         best_ap = 0.0
+        best_auc = 0.0
         best_epoch = 0
 
         # 训练循环
@@ -187,7 +197,19 @@ def main(rank, world_size, opt):
 
                 model.optimize_parameters()
 
-                if model.total_steps % opt.loss_freq == 0 and rank == 0:
+                # 修改损失打印条件，使其与参数更新同步
+                # 如果不使用梯度累积，则每次迭代都打印
+                # 如果使用梯度累积，则只在完成一次参数更新后打印
+                should_print_loss = False
+                if opt.accumulation_steps <= 1:
+                    # 不使用梯度累积，按照原来的频率打印
+                    should_print_loss = (model.total_steps % opt.loss_freq == 0)
+                else:
+                    # 使用梯度累积，按照参数更新频率打印
+                    # 只有当完成一次完整的梯度累积周期时才打印
+                    should_print_loss = (model.update_steps > 0 and model.update_steps % (opt.loss_freq // opt.accumulation_steps) == 0 and model.accumulation_count == 0)
+
+                if should_print_loss and rank == 0:
                     end_time = time.time()
                     elapsed_time = end_time - start_time
                     # 获取并打印单项损失和值
@@ -198,10 +220,44 @@ def main(rank, world_size, opt):
                         # 兜底：若模型未实现 get_individual_losses
                         loss_ral, loss_ce = 0.0, 0.0
                         total_loss = loss if loss is not None else 0.0
+                    
+                    if opt.accumulation_steps <= 1:
+                        print(
+                            "Step {:6d} | loss RAL: {:8.4f} | loss CE: {:8.4f} | Total loss: {:8.4f} | Time: {:6.2f}s".format(
+                                model.total_steps, loss_ral, loss_ce, total_loss, elapsed_time
+                            ),
+                            flush=True
+                        )
+                    else:
+                        print(
+                            "Update Step {:6d} (Total Step {:6d}) | loss RAL: {:8.4f} | loss CE: {:8.4f} | Total loss: {:8.4f} | Time: {:6.2f}s".format(
+                                model.update_steps, model.total_steps, loss_ral, loss_ce, total_loss, elapsed_time
+                            ),
+                            flush=True
+                        )
+                    start_time = time.time()
 
+            # 在每个epoch结束时确保梯度更新
+            # 如果使用梯度累积且当前累积计数不为0，则执行一次梯度更新
+            if hasattr(model, 'accumulation_count') and model.accumulation_count > 0:
+                model.optimizer.step()
+                model.optimizer.zero_grad()
+                model.accumulation_count = 0
+                model.update_steps += 1  # 更新步骤数增加
+
+                # 如果在epoch结束时强制更新了参数，也需要检查是否需要打印损失
+                if opt.accumulation_steps > 1 and model.update_steps % (opt.loss_freq // opt.accumulation_steps) == 0 and rank == 0:
+                    end_time = time.time()
+                    elapsed_time = end_time - start_time
+                    try:
+                        loss_ral, loss_ce = model.get_individual_losses()
+                        total_loss = model.get_loss()
+                    except Exception:
+                        loss_ral, loss_ce = 0.0, 0.0
+                        total_loss = loss if loss is not None else 0.0
                     print(
-                        "Step {:6d} | loss RAL: {:8.4f} | loss CE: {:8.4f} | Total loss: {:8.4f} | Time: {:6.2f}s".format(
-                            model.total_steps, loss_ral, loss_ce, total_loss, elapsed_time
+                        "Update Step {:6d} (Total Step {:6d}) | loss RAL: {:8.4f} | loss CE: {:8.4f} | Total loss: {:8.4f} | Time: {:6.2f}s".format(
+                            model.update_steps, model.total_steps, loss_ral, loss_ce, total_loss, elapsed_time
                         ),
                         flush=True
                     )
@@ -211,31 +267,33 @@ def main(rank, world_size, opt):
             # 仅主进程做验证和模型保存
             if rank == 0:
                 try:
-                    ap, fpr, fnr, acc = validate(model.model.module, val_loader, opt.gpu_ids)
+                    ap, fpr, fnr, acc, auc = validate(model.model.module, val_loader, opt.gpu_ids)
                 except Exception as e:
                     print("验证阶段发生异常：", e, flush=True)
                     traceback.print_exc()
-                    ap, fpr, fnr, acc = 0.0, 0.0, 0.0, 0.0
+                    ap, fpr, fnr, acc, auc = 0.0, 0.0, 0.0, 0.0, 0.0
 
                 print(
-                    "(Val @ epoch {}) acc: {} ap: {} fpr: {} fnr: {}".format(
-                        epoch + model.step_bias, acc, ap, fpr, fnr
+                    "(Val @ epoch {}) acc: {} ap: {} fpr: {} fnr: {} auc: {}".format(
+                        epoch + model.step_bias, acc, ap, fpr, fnr, auc
                     ),
                     flush=True
                 )
 
                 current_epoch = epoch + model.step_bias
-                if acc > best_acc or (acc == best_acc and ap > best_ap):
+                # 更新最佳模型判断条件，现在也考虑AUC指标
+                if acc > best_acc or (acc == best_acc and ap > best_ap) or (acc == best_acc and ap == best_ap and auc > best_auc):
                     best_acc = acc
                     best_ap = ap
+                    best_auc = auc
                     best_epoch = current_epoch
 
-                    print(f"发现新的最佳模型 (epoch {current_epoch}): acc={acc:.4f}, ap={ap:.4f}", flush=True)
+                    print(f"发现新的最佳模型 (epoch {current_epoch}): acc={acc:.4f}, ap={ap:.4f}, auc={auc:.4f}", flush=True)
                     # 保存最佳模型（相对路径）
                     model.save_networks("best_model.pth")
                     model.save_networks(f"model_epoch_{current_epoch}.pth")
                 else:
-                    print(f"当前性能未超过最佳 (最佳: acc={best_acc:.4f}, ap={best_ap:.4f} @ epoch {best_epoch})", flush=True)
+                    print(f"当前性能未超过最佳 (最佳: acc={best_acc:.4f}, ap={best_ap:.4f}, auc={best_auc:.4f} @ epoch {best_epoch})", flush=True)
 
             # 每个 epoch 后尝试释放显存碎片（可选）
             try:
@@ -248,6 +306,7 @@ def main(rank, world_size, opt):
             print("\n训练完成！最佳模型性能:", flush=True)
             print(f" 准确率 (acc): {best_acc:.4f}", flush=True)
             print(f" AP值 (ap): {best_ap:.4f}", flush=True)
+            print(f" AUC值 (auc): {best_auc:.4f}", flush=True)
             print(f" 所在轮次: {best_epoch}", flush=True)
             print(f" 最佳模型文件: best_model.pth", flush=True)
 
