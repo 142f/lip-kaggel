@@ -12,16 +12,16 @@ class Logger(object):
     def __init__(self, log_file):
         self.terminal = sys.stdout
         self.log = open(log_file, "w", encoding="utf-8")
-
+        
     def write(self, message):
         self.terminal.write(message)
         self.log.write(message)
         self.log.flush()
-
+        
     def flush(self):
         self.terminal.flush()
         self.log.flush()
-
+    
     def close(self):
         self.log.close()
 
@@ -65,7 +65,7 @@ if __name__ == "__main__":
     os.makedirs(log_dir, exist_ok=True)
     # 优化日志文件名格式为{实验名称}_{年月日}_{时分秒}.log
     log_file = os.path.join(log_dir, f"model_{time.strftime('%Y%m%d_%H%M%S')}.log")
-
+    
     # 重定向标准输出到日志文件和控制台
     logger = Logger(log_file)
     sys.stdout = logger
@@ -79,6 +79,10 @@ if __name__ == "__main__":
     trainable_params = sum(p.numel() for p in model.model.parameters() if p.requires_grad)
     print(f"模型总参数量: {total_params:,}")
     print(f"可训练参数量: {trainable_params:,}")
+    print("\n")
+    
+    # 显示是否使用混合精度训练
+    print(f"使用混合精度训练: {'是' if opt.use_amp else '否'}")
     print("\n")
 
     data_loader = create_dataloader(opt)
@@ -97,7 +101,7 @@ if __name__ == "__main__":
     for epoch in range(opt.epoch):
         model.train()
         print("epoch: ", epoch + model.step_bias)
-
+        
         # 应用余弦退火学习率（如果启用）
         if opt.cosine_annealing:
             # 注意：PyTorch的CosineAnnealingWarmRestarts调度器会在optimizer.step()中自动更新学习率
@@ -106,7 +110,7 @@ if __name__ == "__main__":
             model.scheduler.step(model.scheduler_epoch)
             current_lr = model.optimizer.param_groups[0]['lr']
             print(f"当前学习率: {current_lr:.2e}")
-
+        
         for i, (img, crops , label) in enumerate(data_loader):
             model.total_steps += 1
 
@@ -151,11 +155,15 @@ if __name__ == "__main__":
         # 在每个epoch结束时确保梯度更新
         # 如果使用梯度累积且当前累积计数不为0，则执行一次梯度更新
         if hasattr(model, 'accumulation_count') and model.accumulation_count > 0:
-            model.optimizer.step()
+            if model.use_amp:
+                model.scaler.step(model.optimizer)
+                model.scaler.update()
+            else:
+                model.optimizer.step()
             model.optimizer.zero_grad()
             model.accumulation_count = 0
             model.update_steps += 1  # 更新步骤数增加
-
+            
             # 如果在epoch结束时强制更新了参数，也需要检查是否需要打印损失
             if opt.accumulation_steps > 1 and model.update_steps % (opt.loss_freq // opt.accumulation_steps) == 0:
                 end_time = time.time()
@@ -185,7 +193,7 @@ if __name__ == "__main__":
             best_ap = ap
             best_auc = auc
             best_epoch = current_epoch
-
+            
             print(f" 发现新的最佳模型 (epoch {current_epoch}): acc={acc:.4f}, ap={ap:.4f}, auc={auc:.4f}")
             model.save_networks("best_model.pth")
             # 可选：同时保存带epoch编号的模型用于记录
@@ -200,7 +208,7 @@ if __name__ == "__main__":
     print(f"   AUC(auc): {best_auc:.4f}")
     print(f"   所在轮次: {best_epoch}")
     print(f"   最佳模型文件: best_model.pth")
-
+    
     # 关闭日志文件
     logger.close()
     sys.stdout = logger.terminal  # 恢复标准输出
