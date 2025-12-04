@@ -2,6 +2,7 @@ import time
 import sys
 import os
 import torch  # 需要显式导入 torch，否则 clip_grad_norm_ 会报错
+from datetime import datetime, timezone
 from validate import validate
 from data import create_dataloader
 from trainer.trainer import Trainer
@@ -114,7 +115,13 @@ if __name__ == "__main__":
             model.scheduler_epoch += 1
             model.scheduler.step(model.scheduler_epoch)
             current_lr = model.optimizer.param_groups[0]['lr']
-            print(f"当前学习率: {current_lr:.2e}")
+            # 获取中国时区（UTC+8）的时间，无论服务器位于哪里
+            from datetime import timedelta
+            # 创建UTC+8时区
+            china_tz = timezone(timedelta(hours=8))
+            # 获取当前时间并转换为中国时区
+            current_time = datetime.now(china_tz).strftime("%Y-%m-%d %H:%M:%S")
+            print(f"当前学习率: {current_lr:.2e} | 系统时间: {current_time}")
         
         for i, (img, crops , label) in enumerate(data_loader):
             model.total_steps += 1
@@ -243,7 +250,7 @@ if __name__ == "__main__":
     print(f"\n 训练完成！最佳模型性能:")
     print(f"   AUC(auc): {best_auc:.4f}")
     print(f"   AP(ap): {best_ap:.4f}")
-    print(f"   准确率 (acc): {best_acc:.4f}")
+    print(f"   ACC(acc): {best_acc:.4f}")
     print(f"   所在轮次: {best_epoch}")
     print(f"   最佳模型文件: best_model.pth")
     print(f"   整个实验总耗时: {int(hours)}小时 {int(minutes)}分钟 {seconds:.2f}秒")
